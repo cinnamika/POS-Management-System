@@ -18,7 +18,9 @@
      cd ngrok_setup
      ngrok config add-authtoken 3FhMZGF21LjnAOG9AKNWYV88hfE_2vFfU1s7dAStgHT2DGG9t
 6. I-copy src/backend/.env.example -> src/backend/.env
-   - Ilagay ang tamang email credentials
+   - Buksan sa Notepad at ilagay ang tamang email credentials
+   - Ang INVENTORY_API_URL ay naka-set na sa ngrok URL ni Jane (M1)
+     Kung magbago URL, palitan dito.
 
 --- SA PRESENTATION DAY ---
 

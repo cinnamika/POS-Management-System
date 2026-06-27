@@ -1,10 +1,15 @@
 // ════════════════════════════════════════════════════════════════
-//  SETUP (GAWIN TO BAGO PRESENTATION):
-//  Palitan ang INVENTORY_API sa ibaba ng ngrok URL ni Jane (M1)
-//  Example: const INVENTORY_API = 'https://abc123.ngrok-free.dev/api';
+//  SETUP: I-set ang INVENTORY_API_URL sa .env file
+//  Default: naka-link na sa ngrok URL ni Jane (M1)
 // ════════════════════════════════════════════════════════════════
 
-const INVENTORY_API = 'https://tamper-polio-speller.ngrok-free.dev/api';
+import dotenv from 'dotenv';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, '.env') });
+
+const INVENTORY_API = process.env.INVENTORY_API_URL || 'https://tamper-polio-speller.ngrok-free.dev/api';
 
 const NGROK_HEADER = { 'ngrok-skip-browser-warning': 'true' };
 
