@@ -1,13 +1,8 @@
-import { useState } from 'react';
-import { Minus, Plus, Search } from 'lucide-react';
+﻿import { useEffect, useState } from 'react';
+import { Search, Plus, Minus } from 'lucide-react';
+import { DataGrid } from '@mui/x-data-grid';
 
-const emptyQuantities = (products) =>
-  products.reduce((acc, product) => {
-    acc[product.id] = 0;
-    return acc;
-  }, {});
-
-export default function TransactionPage({ products, cart, setCart, onProceedToPayment }) {
+export default function TransactionPage({ products, cart, setCart, setCurrentPage, onProceedToPayment }) {
   const [search, setSearch] = useState('');
   const [selectedQty, setSelectedQty] = useState(() =>
     products.reduce((acc, product) => {
@@ -17,11 +12,25 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
     }, {})
   );
 
-  const sortedProducts = [...products].sort((a, b) => a.name.localeCompare(b.name));
-  const filteredProducts = sortedProducts.filter(
-    (product) =>
-      product.name.toLowerCase().includes(search.toLowerCase()) ||
-      product.id.toLowerCase().includes(search.toLowerCase())
+  useEffect(() => {
+    setSelectedQty((prevSelectedQty) =>
+      products.reduce((acc, product) => {
+        const cartItem = cart.find((item) => item.id === product.id);
+        const cartQty = cartItem ? cartItem.qty : 0;
+        const prevQty = prevSelectedQty[product.id] ?? cartQty;
+        acc[product.id] = prevQty === cartQty ? cartQty : prevQty;
+        return acc;
+      }, {})
+    );
+  }, [cart, products]);
+
+  const sortedProducts = [...products].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
+  const filteredProducts = sortedProducts.filter((product) =>
+    product.name.toLowerCase().includes(search.toLowerCase()) ||
+    product.id.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleQtyChange = (id, delta, stock) => {
@@ -40,11 +49,17 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
     const finalQty = Math.min(qtyToSet, product.stock);
 
     if (existing) {
-      setCart(cart.map((item) => (item.id === product.id ? { ...item, qty: finalQty } : item)));
-      return;
+      setCart(
+        cart.map((item) =>
+          item.id === product.id ? { ...item, qty: finalQty } : item
+        )
+      );
+    } else {
+      setCart([
+        ...cart,
+        { ...product, qty: finalQty },
+      ]);
     }
-
-    setCart([...cart, { ...product, qty: finalQty }]);
   };
 
   const removeFromCart = (product) => {
@@ -54,27 +69,25 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
 
     if (targetQty <= 0) {
       setCart(cart.filter((item) => item.id !== product.id));
-      return;
+    } else {
+      setCart(
+        cart.map((item) =>
+          item.id === product.id ? { ...item, qty: targetQty } : item
+        )
+      );
     }
-
-    setCart(cart.map((item) => (item.id === product.id ? { ...item, qty: targetQty } : item)));
-  };
-
-  const clearCart = () => {
-    setCart([]);
-    setSelectedQty(emptyQuantities(products));
   };
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.qty, 0);
   const tax = subtotal * 0.12;
   const total = subtotal + tax;
-
+  
   const today = new Date().toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
-
+  
   const currentTime = new Date().toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
@@ -83,30 +96,32 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
 
   return (
     <div className="space-y-6 p-1">
-      <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <section className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full max-w-lg">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
             <input
               type="text"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder="Search product or SKU..."
               className="w-full rounded-2xl border border-gray-200 bg-gray-50/80 py-3 pl-11 pr-4 text-sm text-gray-800 outline-none transition focus:border-[#5e35b1] focus:bg-white"
             />
           </div>
 
           <div className="flex justify-end">
-            <div className="flex h-12 w-48 flex-col justify-center rounded-2xl border border-gray-200 bg-gray-50/80 px-4 text-center">
-              <p className="text-sm font-bold leading-tight text-gray-800">{today}</p>
-              <p className="mt-0.5 text-[11px] leading-tight text-gray-500">{currentTime}</p>
+            <div className="w-48 h-12 rounded-2xl border border-gray-200 bg-gray-50/80 px-4 text-center flex flex-col justify-center">
+              <p className="text-sm font-bold text-gray-800 leading-tight">
+                {today}
+              </p>
+              <p className="text-[11px] text-gray-500 leading-tight mt-0.5">{currentTime}</p>
             </div>
           </div>
         </div>
       </section>
 
       <section className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
-        <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-base font-bold text-gray-800">Product List</h2>
@@ -117,88 +132,88 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
             </span>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-gray-100">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
-                  <th className="p-3">SKU</th>
-                  <th className="p-3">Product</th>
-                  <th className="p-3">Price</th>
-                  <th className="p-3">Stock</th>
-                  <th className="p-3 text-center">Qty</th>
-                  <th className="p-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 text-gray-700">
-                {filteredProducts.length === 0 ? (
-                  <tr>
-                    <td colSpan="6" className="p-8 text-center text-gray-400 italic">
-                      No products found.
-                    </td>
-                  </tr>
-                ) : (
-                  filteredProducts.map((product) => {
-                    const selected = selectedQty[product.id] ?? 0;
-                    const inCart = cart.some((item) => item.id === product.id);
+          <div style={{ height: 520, width: '100%' }}>
+            <DataGrid
+              rows={filteredProducts}
+              getRowId={(row) => row.id}
+              pagination={false}
+              hideFooter
+              disableSelectionOnClick
+              columns={[
+                { field: 'name', headerName: 'Product Name', flex: 2 },
+                { field: 'id', headerName: 'SKU', flex: 1 },
+                {
+                  field: 'price',
+                  headerName: 'Price',
+                  flex: 1,
+                  renderCell: (params) => `₱${params.row.price.toLocaleString()}`,
+                },
+                { field: 'stock', headerName: 'Stock', flex: 0.8 },
+                {
+                  field: 'actions',
+                  headerName: 'Actions',
+                  flex: 2.2,
+                  sortable: false,
+                  filterable: false,
+                  renderCell: (params) => {
+                    const cartQty = cart.find((item) => item.id === params.row.id)?.qty ?? 0;
+                    const rowQty = selectedQty[params.row.id] ?? cartQty;
+                    const actionType = rowQty === cartQty ? 'idle' : rowQty > cartQty ? 'add' : 'remove';
 
                     return (
-                      <tr key={product.id} className="transition hover:bg-gray-50/70">
-                        <td className="p-3 font-mono text-xs text-gray-500">{product.id}</td>
-                        <td className="p-3 font-semibold text-gray-800">{product.name}</td>
-                        <td className="p-3">PHP {product.price.toLocaleString()}</td>
-                        <td className="p-3">{product.stock}</td>
-                        <td className="p-3">
-                          <div className="mx-auto grid w-28 grid-cols-[2rem_1fr_2rem] items-center rounded-xl border border-gray-200 bg-white">
-                            <button
-                              type="button"
-                              onClick={() => handleQtyChange(product.id, -1, product.stock)}
-                              className="flex h-9 items-center justify-center rounded-l-xl text-gray-500 transition hover:bg-gray-50"
-                              aria-label={`Decrease ${product.name} quantity`}
-                            >
-                              <Minus size={14} />
-                            </button>
-                            <span className="text-center text-xs font-bold text-gray-800">{selected}</span>
-                            <button
-                              type="button"
-                              onClick={() => handleQtyChange(product.id, 1, product.stock)}
-                              className="flex h-9 items-center justify-center rounded-r-xl text-gray-500 transition hover:bg-gray-50"
-                              aria-label={`Increase ${product.name} quantity`}
-                            >
-                              <Plus size={14} />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="p-3 text-right">
-                          <div className="flex justify-end gap-2">
-                            {inCart && (
-                              <button
-                                type="button"
-                                onClick={() => removeFromCart(product)}
-                                className="rounded-xl border border-gray-200 px-3 py-2 text-xs font-bold text-gray-500 transition hover:bg-gray-50"
-                              >
-                                Update
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => addToCart(product)}
-                              disabled={selected < 1 || product.stock < 1}
-                              className="rounded-xl bg-[#5e35b1] px-3 py-2 text-xs font-bold text-white transition hover:bg-[#4527a0] disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              {inCart ? 'Set Qty' : 'Add'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
+                      <div className="flex items-center gap-1.5 h-full">
+                        <button
+                          onClick={() => handleQtyChange(params.row.id, -1, params.row.stock)}
+                          className="w-7 h-7 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition font-bold flex items-center justify-center text-sm"
+                        >
+                          <Minus size={12} />
+                        </button>
+
+                        <span className="w-6 text-center font-semibold text-xs text-gray-800">
+                          {rowQty}
+                        </span>
+
+                        <button
+                          onClick={() => handleQtyChange(params.row.id, 1, params.row.stock)}
+                          className="w-7 h-7 rounded-lg bg-gray-100 text-gray-700 hover:bg-gray-200 transition font-bold flex items-center justify-center text-sm"
+                        >
+                          <Plus size={12} />
+                        </button>
+
+                        {actionType === 'add' && (
+                          <button
+                            onClick={() => addToCart(params.row)}
+                            className="ml-2 px-3 py-1 rounded-lg bg-[#5e35b1] text-white text-xs font-semibold hover:bg-[#4a148c] transition shadow-sm"
+                          >
+                            Add
+                          </button>
+                        )}
+
+                        {actionType === 'remove' && (
+                          <button
+                            onClick={() => removeFromCart(params.row)}
+                            className="ml-2 px-3 py-1 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition shadow-sm"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
+                  },
+                },
+              ]}
+              sx={{
+                border: 0,
+                backgroundColor: '#FFFFFF',
+                fontSize: '13px',
+                '& .MuiDataGrid-columnHeaders': { backgroundColor: '#f8fafc', color: '#364152', fontWeight: '700' },
+                '& .MuiDataGrid-cell': { display: 'flex', alignItems: 'center', color: '#4b5563' },
+              }}
+            />
           </div>
         </div>
 
-        <div className="flex flex-col justify-between rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+        <div className="flex flex-col justify-between bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
           <div>
             <div className="mb-4">
               <h2 className="text-base font-bold text-gray-800">Shopping Cart</h2>
@@ -208,7 +223,7 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
             <div className="overflow-x-auto">
               <table className="min-w-full text-xs">
                 <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50 text-left font-bold text-gray-500">
+                  <tr className="bg-gray-50 text-left text-gray-500 font-bold border-b border-gray-100">
                     <th className="p-3">Product</th>
                     <th className="p-3">Qty</th>
                     <th className="p-3">Price</th>
@@ -218,17 +233,15 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
                 <tbody className="divide-y divide-gray-50 text-gray-600">
                   {cart.length === 0 ? (
                     <tr>
-                      <td colSpan="4" className="p-8 text-center text-gray-400 italic">
-                        Your cart is empty.
-                      </td>
+                      <td colSpan="4" className="p-8 text-center text-gray-400 italic">Your cart is empty.</td>
                     </tr>
                   ) : (
                     cart.map((item) => (
-                      <tr key={item.id} className="transition hover:bg-gray-50/60">
+                      <tr key={item.id} className="hover:bg-gray-50/60 transition">
                         <td className="p-3 font-medium text-gray-800">{item.name}</td>
                         <td className="p-3 font-semibold text-gray-700">{item.qty}</td>
-                        <td className="p-3">PHP {item.price.toLocaleString()}</td>
-                        <td className="p-3 font-semibold text-gray-900">PHP {(item.price * item.qty).toLocaleString()}</td>
+                        <td className="p-3">₱{item.price.toLocaleString()}</td>
+                        <td className="p-3 font-semibold text-gray-900">₱{(item.price * item.qty).toLocaleString()}</td>
                       </tr>
                     ))
                   )}
@@ -237,26 +250,26 @@ export default function TransactionPage({ products, cart, setCart, onProceedToPa
             </div>
           </div>
 
-          <div className="mt-6 border-t border-gray-100 pt-4">
-            <div className="mb-4 grid gap-3 rounded-xl bg-gray-50 p-4 text-xs text-gray-600">
-              <div className="flex items-center justify-between">
+          <div className="mt-6 pt-4 border-t border-gray-100">
+            <div className="grid gap-3 rounded-xl bg-gray-50 p-4 text-xs text-gray-600 mb-4">
+              <div className="flex justify-between items-center">
                 <p className="text-gray-400">Subtotal</p>
-                <p className="font-semibold text-gray-800">PHP {subtotal.toLocaleString()}</p>
+                <p className="font-semibold text-gray-800">₱{subtotal.toLocaleString()}</p>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex justify-between items-center">
                 <p className="text-gray-400">Tax (12%)</p>
-                <p className="font-semibold text-gray-800">PHP {tax.toFixed(2)}</p>
+                <p className="font-semibold text-gray-800">₱{tax.toFixed(2)}</p>
               </div>
-              <div className="flex items-center justify-between border-t border-gray-200/60 pt-2">
-                <p className="text-sm font-bold text-gray-700">Total Amount</p>
-                <p className="text-xl font-black text-[#5e35b1]">PHP {total.toFixed(2)}</p>
+              <div className="flex justify-between items-center pt-2 border-t border-gray-200/60">
+                <p className="font-bold text-gray-700 text-sm">Total Amount</p>
+                <p className="text-xl font-black text-[#5e35b1]">₱{total.toFixed(2)}</p>
               </div>
             </div>
 
             <div className="flex flex-col gap-2 sm:flex-row">
               <button
                 type="button"
-                onClick={clearCart}
+                onClick={() => setCart([])}
                 className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-3 text-xs font-bold text-gray-500 transition hover:bg-gray-50"
               >
                 Clear Cart
