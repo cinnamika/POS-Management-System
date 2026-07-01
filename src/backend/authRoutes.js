@@ -106,11 +106,9 @@ router.post('/register', async (req, res) => {
 
   try {
     await sendVerificationEmail(email, code, firstName);
-    // FIXED: Changed message context to reflect code generation state
     res.json({ message: 'Verification code sent. Please check your email.', email });
   } catch (error) {
     console.error('Verification email error details:', error);
-    // FIXED: Force an error status code so registration halts if email transport configuration breaks
     verificationStore.delete(email);
     res.status(500).json({ message: 'Failed to send verification email. Please check your internet or configuration.' });
   }
@@ -150,7 +148,6 @@ router.post('/verify', async (req, res) => {
     console.error('Employee ID email error:', error);
   }
 
-  // FIXED: Account is officially created and saved to memory here
   res.json({ message: 'Account created and verified successfully.', employeeId: verifiedUser.employeeId });
 });
 
@@ -205,11 +202,16 @@ router.post('/forgot-password', async (req, res) => {
   });
 
   try {
+    // This sends the code over SMTP safely to the actual user email
     await sendPasswordRecoveryEmail(email, code);
-    res.json({ message: 'Recovery code sent. Please check your email.' });
+    
+    // FIXED: Ensured no raw code parameter is leaked inside the JSON payload structure
+    return res.json({ message: 'Recovery code sent. Please check your email inbox.' });
   } catch (error) {
     console.error('Password recovery email error:', error);
-    res.status(500).json({ message: 'Failed to send recovery email.' });
+    // Cleanup temporary record cache tracking if the nodemailer transmission fails
+    passwordRecoveryStore.delete(email);
+    return res.status(500).json({ message: 'Failed to send recovery email. Please check your configuration.' });
   }
 });
 

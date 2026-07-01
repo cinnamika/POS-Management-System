@@ -2,11 +2,20 @@ import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Look in backend folder first, fallback to root workspace folder if missing
+const localEnvPath = path.resolve(__dirname, '.env');
+const rootEnvPath = path.resolve(__dirname, '../../.env');
+
+if (fs.existsSync(localEnvPath)) {
+  dotenv.config({ path: localEnvPath });
+} else {
+  dotenv.config({ path: rootEnvPath });
+}
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
@@ -18,7 +27,7 @@ const transporter = nodemailer.createTransport({
 
 const ensureEmailConfig = () => {
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    throw new Error('Email credentials are not configured.');
+    throw new Error('Email credentials are not configured in your .env file.');
   }
 };
 

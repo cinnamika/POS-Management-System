@@ -55,11 +55,8 @@ export default function ForgotPasswordPage({ setCurrentPage }) {
         setRecoverySent(true);
         setResendSeconds(60);
         setStatusType('success');
-        setStatusMessage(
-          data.code
-            ? `${data.message || 'Recovery code generated.'} Code: ${data.code}`
-            : data.message || 'Recovery code sent. Please check your email.'
-        );
+        // FIX: Removed the raw leak code verification string output entirely
+        setStatusMessage(data.message || 'Recovery code sent. Please check your email inbox.');
       } else {
         setStatusType('error');
         setStatusMessage(data.message || 'Unable to send recovery code.');

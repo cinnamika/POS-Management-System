@@ -28,6 +28,7 @@ export default function PaymentPage({
   currentUser,
   onSuccess,
   onCancel,
+  onTransactionRecorded,
 }) {
   const [paymentAmount, setPaymentAmount] = useState('');
   const [method, setMethod] = useState('Cash');
@@ -91,6 +92,7 @@ export default function PaymentPage({
       setTransactions([newTransaction, ...transactions]);
       setCurrentReceipt(newTransaction);
       setCart([]);
+      onTransactionRecorded?.();
       onSuccess();
     } catch (error) {
       console.error('Payment processing failed:', error);

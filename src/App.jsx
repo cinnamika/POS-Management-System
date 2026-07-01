@@ -1,73 +1,137 @@
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
+
+import Sidebar from './components/Sidebar';
+import { apiUrl } from './lib/api';
+
+const SESSION_STORAGE_KEY = 'opi-pos-session';
+
+const readPersistedSession = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writePersistedSession = (state) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Ignore storage errors and keep the app running.
+  }
+};
+
+const clearPersistedSession = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors and keep the app running.
+  }
+};
+
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import EmailVerificationPage from './pages/EmailVerificationPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import Sidebar from './components/Sidebar';
+
 import TransactionPage from './pages/TransactionPage';
 import PaymentPage from './pages/PaymentPage';
 import ReceiptPage from './pages/ReceiptPage';
 import HistoryPage from './pages/HistoryPage';
 import DetailsPage from './pages/DetailsPage';
-import { apiUrl } from './lib/api';
+
+const INITIAL_PRODUCTS = [
+  { id: 'SKU-1029', name: 'AlphaTech Pro Wireless Earbuds', price: 2499, stock: 145 },
+  { id: 'SKU-8832', name: 'ErgoGrip Mechanical Keyboard', price: 4199, stock: 84 },
+  { id: 'SKU-3321', name: 'Legacy USB 2.0 Hub (4-port)', price: 599, stock: 12 },
+  { id: 'SKU-4110', name: 'Lumina 4K Monitor (27-inch)', price: 18500, stock: 32 },
+  { id: 'SKU-1190', name: 'Wired Earphones (Basic)', price: 299, stock: 8 },
+  { id: 'SKU-9021', name: 'TitanX Gaming Mouse', price: 1499, stock: 65 },
+];
+
+const mapServerTransaction = (row) => {
+  const parsedItems = typeof row.items === 'string' ? JSON.parse(row.items || '[]') : (row.items || []);
+
+  return {
+    receiptNo: row.receipt_no,
+    date: row.created_at ? new Date(row.created_at).toISOString().split('T')[0] : '',
+    time: row.created_at ? new Date(row.created_at).toTimeString().split(' ')[0].slice(0, 5) : '',
+    items: (parsedItems || []).map((item) => ({
+      id: item.product_id,
+      name: item.product_name,
+      price: Number(item.price || 0),
+      qty: Number(item.qty || 0),
+    })),
+    total: Number(row.total || 0),
+    paid: Number(row.paid || 0),
+    change: Number(row.change_given || 0),
+    paymentMethod: row.payment_method || 'Cash',
+    cashier: row.cashier_name || row.cashier_id || 'Employee',
+  };
+};
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('login');
-  const [currentUser, setCurrentUser] = useState(null);
-  const [pendingVerificationEmail, setPendingVerificationEmail] = useState('');
-  const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [currentReceipt, setCurrentReceipt] = useState(null);
-  const [selectedReceiptNo, setSelectedReceiptNo] = useState('');
+  const persistedSession = readPersistedSession();
 
-  const fetchProducts = useCallback(async () => {
+  const [currentPage, setCurrentPage] = useState(persistedSession?.currentPage || 'login');
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState(persistedSession?.pendingVerificationEmail || '');
+  const [currentUser, setCurrentUser] = useState(persistedSession?.currentUser || null);
+
+  const [products, setProducts] = useState(INITIAL_PRODUCTS);
+  const [cart, setCart] = useState([]);
+  const [currentReceipt, setCurrentReceipt] = useState(null);
+  const [selectedTransactionId, setSelectedTransactionId] = useState(null);
+
+  const [transactions, setTransactions] = useState([]);
+
+  const refreshTransactions = async () => {
     try {
-      const endpoint = apiUrl('/api/sales/products');
-      const res = await fetch(endpoint);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          setProducts(data);
-          return;
-        }
+      const response = await fetch(apiUrl('/api/sales-orders'));
+      if (!response.ok) {
+        throw new Error('Unable to load transaction history');
       }
-    } catch (e) {
-      console.warn('Could not fetch products from backend, using hardcoded fallback', e);
+
+      const rows = await response.json();
+      setTransactions((rows || []).map(mapServerTransaction));
+    } catch (error) {
+      console.error('Failed to refresh transactions:', error);
     }
-    // Fallback
-    setProducts([
-      { id: 'SKU-001', name: 'Bottled Water', price: 20, stock: 80 },
-      { id: 'SKU-002', name: 'Instant Coffee', price: 15, stock: 120 },
-      { id: 'SKU-003', name: 'Chocolate Bar', price: 35, stock: 45 },
-      { id: 'SKU-004', name: 'Potato Chips', price: 42, stock: 60 },
-      { id: 'SKU-005', name: 'Canned Tuna', price: 58, stock: 32 },
-      { id: 'SKU-006', name: 'Rice 1kg', price: 65, stock: 25 },
-    ]);
-  }, []);
+  };
 
   useEffect(() => {
-    fetchProducts();
-  }, [fetchProducts]);
+    refreshTransactions();
+  }, [currentPage]);
 
-  const selectedTransaction = useMemo(
-    () => transactions.find((t) => t.receiptNo === selectedReceiptNo) || null,
-    [selectedReceiptNo, transactions]
-  );
+  useEffect(() => {
+    writePersistedSession({
+      currentPage,
+      currentUser,
+      pendingVerificationEmail,
+    });
+  }, [currentPage, currentUser, pendingVerificationEmail]);
 
-  const goToPage = (page) => {
-    if (page === 'login') {
-      setCart([]);
-      setCurrentReceipt(null);
-      setSelectedReceiptNo('');
+  useEffect(() => {
+    const protectedPages = ['transaction', 'payment', 'receipt', 'history', 'details'];
+    if (protectedPages.includes(currentPage) && !currentUser) {
+      setCurrentPage('login');
     }
-    setCurrentPage(page);
-  };
+  }, [currentPage, currentUser]);
+
+  if (currentPage === 'login') {
+    return <LoginPage setCurrentPage={setCurrentPage} setCurrentUser={setCurrentUser} />;
+  }
 
   if (currentPage === 'register') {
     return (
       <RegisterPage
-        setCurrentPage={goToPage}
+        setCurrentPage={setCurrentPage}
         setPendingVerificationEmail={setPendingVerificationEmail}
       />
     );
@@ -77,28 +141,37 @@ export default function App() {
     return (
       <EmailVerificationPage
         email={pendingVerificationEmail}
-        setCurrentPage={goToPage}
+        setCurrentPage={setCurrentPage}
       />
     );
   }
 
   if (currentPage === 'forgot-password') {
-    return <ForgotPasswordPage setCurrentPage={goToPage} />;
+    return <ForgotPasswordPage setCurrentPage={setCurrentPage} />;
   }
 
-  if (!currentUser || currentPage === 'login') {
-    return (
-      <LoginPage
-        setCurrentPage={goToPage}
+  return (
+    <div className="flex h-screen bg-background text-slate-800 overflow-hidden">
+      <Sidebar
+        currentPage={currentPage}
+        setCurrentPage={setCurrentPage}
+        currentUser={currentUser}
         setCurrentUser={setCurrentUser}
       />
-    );
-  }
 
-  const renderPage = () => {
-    switch (currentPage) {
-      case 'payment':
-        return (
+      <main className="flex-1 overflow-y-auto p-8 bg-background">
+        {currentPage === 'transaction' && (
+          <TransactionPage
+            products={products}
+            cart={cart}
+            setCart={setCart}
+            setCurrentPage={setCurrentPage}
+            currentUser={currentUser}
+            onProceedToPayment={() => setCurrentPage('payment')}
+          />
+        )}
+
+        {currentPage === 'payment' && (
           <PaymentPage
             cart={cart}
             setCart={setCart}
@@ -107,63 +180,39 @@ export default function App() {
             transactions={transactions}
             setTransactions={setTransactions}
             setCurrentReceipt={setCurrentReceipt}
-            currentUser={currentUser}
-            onSuccess={() => goToPage('receipt')}
-            onCancel={() => goToPage('transaction')}
+            onSuccess={() => setCurrentPage('receipt')}
+            onCancel={() => setCurrentPage('transaction')}
+            onTransactionRecorded={refreshTransactions}
           />
-        );
-      case 'receipt':
-        return (
+        )}
+
+        {currentPage === 'receipt' && (
           <ReceiptPage
             receipt={currentReceipt}
             onNewTransaction={() => {
               setCart([]);
               setCurrentReceipt(null);
-              goToPage('transaction');
+              setCurrentPage('transaction');
             }}
           />
-        );
-      case 'history':
-        return (
+        )}
+
+        {currentPage === 'history' && (
           <HistoryPage
             transactions={transactions}
-            onViewDetails={(receiptNo) => {
-              setSelectedReceiptNo(receiptNo);
-              goToPage('details');
+            onViewDetails={(id) => {
+              setSelectedTransactionId(id);
+              setCurrentPage('details');
             }}
           />
-        );
-      case 'details':
-        return (
-          <DetailsPage
-            transaction={selectedTransaction}
-            onBack={() => goToPage('history')}
-          />
-        );
-      case 'transaction':
-      default:
-        return (
-          <TransactionPage
-            products={products}
-            cart={cart}
-            setCart={setCart}
-            setCurrentPage={goToPage}
-            onProceedToPayment={() => goToPage('payment')}
-          />
-        );
-    }
-  };
+        )}
 
-  return (
-    <div className="flex min-h-screen bg-slate-50">
-      <Sidebar
-        currentPage={currentPage}
-        setCurrentPage={goToPage}
-        currentUser={currentUser}
-        setCurrentUser={setCurrentUser}
-      />
-      <main className="min-w-0 flex-1 p-6">
-        {renderPage()}
+        {currentPage === 'details' && (
+          <DetailsPage
+            transaction={transactions.find((t) => t.receiptNo === selectedTransactionId)}
+            onBack={() => setCurrentPage('history')}
+          />
+        )}
       </main>
     </div>
   );

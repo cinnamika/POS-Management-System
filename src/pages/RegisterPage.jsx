@@ -1,6 +1,39 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight, Lock, Mail, MapPin, Phone, UserRound } from 'lucide-react';
 import { apiUrl } from '../lib/api';
+
+const REGISTER_FORM_STORAGE_KEY = 'opi-register-form';
+
+const readPersistedForm = () => {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(REGISTER_FORM_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+const writePersistedForm = (formData) => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.setItem(REGISTER_FORM_STORAGE_KEY, JSON.stringify(formData));
+  } catch {
+    // Ignore storage errors and keep the app running.
+  }
+};
+
+const clearPersistedForm = () => {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.sessionStorage.removeItem(REGISTER_FORM_STORAGE_KEY);
+  } catch {
+    // Ignore storage errors and keep the app running.
+  }
+};
 
 const initialFormState = {
   firstName: '',
@@ -57,10 +90,15 @@ const validatePassword = (value) => {
 };
 
 export default function RegisterPage({ setCurrentPage, setPendingVerificationEmail }) {
-  const [formData, setFormData] = useState(initialFormState);
+  const persistedForm = readPersistedForm();
+  const [formData, setFormData] = useState(persistedForm || initialFormState);
   const [errors, setErrors] = useState({});
   const [statusMessage, setStatusMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    writePersistedForm(formData);
+  }, [formData]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -139,6 +177,7 @@ export default function RegisterPage({ setCurrentPage, setPendingVerificationEma
       const data = await response.json();
 
       if (response.ok) {
+        clearPersistedForm();
         setPendingVerificationEmail(targetEmail);
         // FIXED: Changed confirmation context status banner text
         setStatusMessage('Verification code sent! Please verify your identity.');

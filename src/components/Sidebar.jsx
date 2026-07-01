@@ -147,6 +147,9 @@ export default function Sidebar({ currentPage, setCurrentPage, currentUser, setC
           onClick={() => {
             setCurrentUser(null);
             setCurrentPage('login');
+            if (typeof window !== 'undefined') {
+              window.sessionStorage.removeItem('opi-pos-session');
+            }
           }}
           className="
             w-full flex items-center gap-3

@@ -1,11 +1,24 @@
-import { useState } from 'react';
-import { ArrowRight, MailCheck } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowRight, MailCheck, RefreshCw } from 'lucide-react';
 import { apiUrl } from '../lib/api';
 
 export default function EmailVerificationPage({ email, setCurrentPage }) {
   const [code, setCode] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(60);
+
+  // Manage the 60-second countdown timer interval
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setResendSeconds((prev) => Math.max(prev - 1, 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendSeconds]);
 
   const handleVerify = async (event) => {
     event.preventDefault();
@@ -15,7 +28,6 @@ export default function EmailVerificationPage({ email, setCurrentPage }) {
       return;
     }
 
-    // FIX: Stops partial/empty inputs from hitting the API or crashing/bypassing
     if (code.trim().length !== 6) {
       setStatusMessage('Please enter a valid 6-digit verification code.');
       return;
@@ -35,7 +47,6 @@ export default function EmailVerificationPage({ email, setCurrentPage }) {
 
       if (response.ok) {
         setStatusMessage('Email verified successfully! Redirecting to login...');
-        // FIX: Gives the user time to see the successful message before jumping pages
         setTimeout(() => {
           setCurrentPage('login');
         }, 2000);
@@ -49,7 +60,35 @@ export default function EmailVerificationPage({ email, setCurrentPage }) {
     }
   };
 
-  const isSuccess = statusMessage.toLowerCase().includes('success');
+  const handleResendCode = async () => {
+    if (resendSeconds > 0 || isResending || !email) return;
+
+    setIsResending(true);
+    setStatusMessage('');
+
+    try {
+      const response = await fetch(apiUrl('/api/auth/resend-verification'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setResendSeconds(60);
+        setStatusMessage('A fresh verification code has been dispatched to your email inbox.');
+      } else {
+        setStatusMessage(data.message || 'Unable to resend verification code.');
+      }
+    } catch {
+      setStatusMessage('Unable to reach the server to resend the code.');
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const isSuccess = statusMessage.toLowerCase().includes('success') || statusMessage.toLowerCase().includes('dispatched');
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(94,53,177,0.12),_transparent_35%),linear-gradient(135deg,_#f8f7ff_0%,_#ffffff_100%)] p-4 sm:p-6 lg:p-8">
@@ -97,9 +136,18 @@ export default function EmailVerificationPage({ email, setCurrentPage }) {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
-            Didn’t receive a code? Check your spam folder or try registering again.
-          </p>
+          <div className="mt-8 text-center">
+            <p className="text-sm text-gray-500">Didn’t receive a code?</p>
+            <button
+              type="button"
+              disabled={resendSeconds > 0 || isResending}
+              onClick={handleResendCode}
+              className="mt-2 inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-600 shadow-sm transition hover:border-[#5e35b1]/30 hover:bg-[#f8f7ff] hover:text-[#5e35b1] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCw size={14} className={isResending ? 'animate-spin' : ''} />
+              {resendSeconds > 0 ? `Resend Code in ${resendSeconds}s` : 'Resend Verification Code'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

@@ -7,7 +7,7 @@ import bcrypt from "bcryptjs";
 
 
 // IMPORT EMAIL SERVICE HOOKS Safely
-import { sendVerificationEmail } from "./emailService.js";
+import { sendVerificationEmail, sendPasswordRecoveryEmail } from "./emailService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -141,6 +141,50 @@ app.post('/api/auth/register', async (req, res) => {
   }
 });
 
+// POST /api/auth/resend-verification
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const emailError = validateEmail(email);
+
+    if (emailError) {
+      return res.status(400).json({ message: emailError });
+    }
+
+    const record = registrationVerificationStore.get(email);
+    if (!record) {
+      return res.status(404).json({ message: 'No pending verification was found for this email.' });
+    }
+
+    const pool = await getDb();
+    const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUsers.length > 0) {
+      return res.status(409).json({ message: 'An account with this email already exists.' });
+    }
+
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const expiresAt = Date.now() + 10 * 60 * 1000;
+
+    registrationVerificationStore.set(email, {
+      ...record,
+      code,
+      expiresAt,
+    });
+
+    try {
+      await sendVerificationEmail(email, code, record.userData?.firstName || 'User');
+      res.json({ message: 'A fresh verification code has been dispatched to your email inbox.' });
+    } catch (emailErr) {
+      console.error('Resend verification email failure:', emailErr);
+      registrationVerificationStore.delete(email);
+      return res.status(500).json({ message: 'Failed to resend verification email.' });
+    }
+  } catch (err) {
+    console.error('Resend verification error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // POST /api/auth/verify — Now securely processes memory queue records into MySQL
 app.post('/api/auth/verify', async (req, res) => {
   try {
@@ -167,6 +211,11 @@ app.post('/api/auth/verify', async (req, res) => {
     const employeeId = `EID${String(Math.floor(100000 + Math.random() * 900000))}`;
 
     const pool = await getDb();
+    const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
+    if (existingUsers.length > 0) {
+      return res.status(409).json({ message: 'An account with this email already exists.' });
+    }
+
     await pool.query(
       `INSERT INTO users (employee_id, first_name, middle_name, last_name, email, password, contact_number, address, role)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'CASHIER')`,
@@ -226,10 +275,13 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const code = String(Math.floor(100000 + Math.random() * 900000));
     recoveryStore.set(email, { code, expiresAt: Date.now() + 10 * 60 * 1000 });
 
-    res.json({ message: 'Recovery code generated', code });
+    await sendPasswordRecoveryEmail(email, code);
+
+    res.json({ message: 'Recovery code sent. Please check your email inbox.' });
   } catch (err) {
     console.error('Forgot password error:', err);
-    res.status(500).json({ message: 'Server error' });
+    recoveryStore.delete(email);
+    res.status(500).json({ message: 'Unable to send recovery email right now.' });
   }
 });
 
@@ -296,6 +348,10 @@ app.get('/api/sales-orders', async (req, res) => {
     const conditions = [];
     const params = [];
 
+    const hasDateFilter = Boolean(date || start_date || end_date);
+    if (!hasDateFilter) {
+      conditions.push('DATE(so.created_at) = CURDATE()');
+    }
     if (date) { conditions.push('DATE(so.created_at) = ?'); params.push(date); }
     if (start_date) { conditions.push('DATE(so.created_at) >= ?'); params.push(start_date); }
     if (end_date) { conditions.push('DATE(so.created_at) <= ?'); params.push(end_date); }
